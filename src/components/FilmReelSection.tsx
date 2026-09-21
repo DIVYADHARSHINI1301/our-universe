@@ -1,6 +1,19 @@
 import React, { useState, useRef } from 'react';
-import { motion } from 'framer-motion';
-import { Film, Clock, ChevronLeft, ChevronRight, Heart, Video, Upload, Edit3, Check } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Film,
+  Clock,
+  ChevronLeft,
+  ChevronRight,
+  Heart,
+  Video,
+  Upload,
+  Edit3,
+  Check,
+  CheckCircle2,
+  Maximize2,
+  FileVideo,
+} from 'lucide-react';
 import { useStory } from '../context/StoryContext';
 import type { FilmFrame } from '../data/story';
 
@@ -14,6 +27,9 @@ export const FilmReelSection: React.FC<FilmReelProps> = ({ onImageClick }) => {
   const activeFrame = story.filmReel.frames[activeFrameIndex] || story.filmReel.frames[0];
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isEditingText, setIsEditingText] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const handlePrev = () => {
     setActiveFrameIndex((prev) =>
@@ -32,27 +48,53 @@ export const FilmReelSection: React.FC<FilmReelProps> = ({ onImageClick }) => {
     fileInputRef.current?.click();
   };
 
-  const onFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const processUploadedFile = (file: File) => {
     if (!file || !activeFrame) return;
 
-    handleFileUpload(file, (mediaUrl, mediaType) => {
+    const isVid = file.type.startsWith('video') || !!file.name.match(/\.(mp4|mov|webm|m4v|mkv|avi)$/i);
+    setIsUploading(true);
+    setUploadStatus(`Uploading ${isVid ? 'video' : 'photo'} "${file.name}"...`);
+
+    handleFileUpload(file, (mediaUrl, detectedType) => {
+      const isVideoMedia = detectedType === 'video' || isVid;
       updateFilmFrame(activeFrame.id, {
-        image: mediaType === 'image' ? mediaUrl : activeFrame.image,
-        video: mediaType === 'video' ? mediaUrl : undefined,
+        image: mediaUrl,
+        video: isVideoMedia ? mediaUrl : undefined,
       });
-      e.target.value = '';
+      setIsUploading(false);
+      setUploadStatus(`Uploaded Frame #${activeFrame.frameNumber} successfully! ✨`);
+      setTimeout(() => setUploadStatus(null), 4000);
     });
   };
 
+  const onFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processUploadedFile(file);
+      e.target.value = '';
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      processUploadedFile(file);
+    }
+  };
+
+  const activeMediaSrc = activeFrame.video || activeFrame.image;
+  const isCurrentFrameVideo = !!activeFrame.video;
+
   return (
     <section id="film-reel" className="relative py-28 px-4 sm:px-6 max-w-6xl mx-auto overflow-hidden">
-      {/* Hidden File Input for Chapter 7 Direct Uploads */}
+      {/* Universal File Input (Supports all Videos & Photos) */}
       <input
         type="file"
         ref={fileInputRef}
         onChange={onFileSelected}
-        accept="image/*,video/*"
+        accept="video/*,image/*,.mp4,.mov,.webm,.m4v,.mkv,.avi,.jpeg,.jpg,.png,.webp"
         className="hidden"
       />
 
@@ -108,7 +150,7 @@ export const FilmReelSection: React.FC<FilmReelProps> = ({ onImageClick }) => {
         <div className="flex items-center gap-4 sm:gap-6 overflow-x-auto no-scrollbar py-4 px-2 scroll-smooth">
           {story.filmReel.frames.map((frame: FilmFrame, idx: number) => {
             const isActive = idx === activeFrameIndex;
-            const isVideo = !!frame.video;
+            const isVid = !!frame.video;
             const mediaSrc = frame.video || frame.image;
 
             return (
@@ -133,7 +175,7 @@ export const FilmReelSection: React.FC<FilmReelProps> = ({ onImageClick }) => {
 
                 {/* Frame Media */}
                 <div className="relative aspect-[16/10] rounded-xl overflow-hidden bg-black">
-                  {isVideo ? (
+                  {isVid ? (
                     <video
                       src={mediaSrc}
                       autoPlay
@@ -154,8 +196,8 @@ export const FilmReelSection: React.FC<FilmReelProps> = ({ onImageClick }) => {
                   <span className="absolute bottom-2 left-2 right-2 text-xs font-serif text-white truncate">
                     {frame.title}
                   </span>
-                  {isVideo && (
-                    <span className="absolute top-2 right-2 flex items-center gap-1 bg-[#ff2a73] px-2 py-0.5 rounded-full text-[10px] text-white font-medium">
+                  {isVid && (
+                    <span className="absolute top-2 right-2 flex items-center gap-1 bg-[#ff2a73] px-2 py-0.5 rounded-full text-[10px] text-white font-medium shadow-md">
                       <Video size={10} /> Video
                     </span>
                   )}
@@ -197,19 +239,73 @@ export const FilmReelSection: React.FC<FilmReelProps> = ({ onImageClick }) => {
         </div>
       </div>
 
-      {/* Active Focal Frame Highlight & DIRECT EDIT/UPLOAD BUTTONS */}
+      {/* Active Focal Frame Highlight & Direct Upload Box */}
       <motion.div
         key={activeFrame.id}
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="mt-10 p-6 sm:p-8 rounded-3xl glass-panel border-2 border-[#ff8fb5]/40 text-center max-w-2xl mx-auto shadow-[0_0_40px_rgba(255,42,115,0.3)] relative"
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsDragging(true);
+        }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={handleDrop}
+        className={`mt-10 p-6 sm:p-8 rounded-3xl glass-panel border-2 transition-all duration-300 text-center max-w-3xl mx-auto shadow-[0_0_50px_rgba(255,42,115,0.3)] relative ${
+          isDragging ? 'border-[#ff2a73] scale-[1.01] bg-[#2a0636]' : 'border-[#ff8fb5]/40'
+        }`}
       >
         <p className="text-xs uppercase font-serif tracking-widest text-[#ff8fb5] mb-2 flex items-center justify-center gap-1.5">
           <Heart size={13} fill="currentColor" className="text-[#ff2a73]" />
           {story.filmReel.focalPrompt}
           <Heart size={13} fill="currentColor" className="text-[#ff2a73]" />
         </p>
+
+        {/* Large Media Preview for Active Frame */}
+        <div
+          className="relative max-w-lg mx-auto aspect-[16/10] rounded-2xl overflow-hidden bg-black/80 border-2 border-[#ff8fb5]/30 mb-6 group cursor-pointer shadow-xl"
+          onClick={() =>
+            onImageClick &&
+            onImageClick(
+              activeMediaSrc,
+              activeFrame.title,
+              undefined,
+              undefined,
+              isCurrentFrameVideo
+            )
+          }
+        >
+          {isCurrentFrameVideo ? (
+            <video
+              src={activeMediaSrc}
+              controls
+              autoPlay
+              loop
+              playsInline
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <img
+              src={activeMediaSrc}
+              alt={activeFrame.title}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            />
+          )}
+
+          <div className="absolute top-3 right-3 flex items-center gap-2">
+            {isCurrentFrameVideo && (
+              <span className="flex items-center gap-1 bg-[#ff2a73] px-2.5 py-1 rounded-full text-xs text-white font-medium shadow-lg">
+                <Video size={12} /> Active Video
+              </span>
+            )}
+            <button
+              className="p-2 rounded-full bg-black/60 hover:bg-[#ff2a73] text-white transition-colors"
+              title="Fullscreen"
+            >
+              <Maximize2 size={14} />
+            </button>
+          </div>
+        </div>
 
         {/* Title (Click to Edit or View) */}
         {!isEditingText ? (
@@ -228,7 +324,7 @@ export const FilmReelSection: React.FC<FilmReelProps> = ({ onImageClick }) => {
 
         {/* Quote (Click to Edit or View) */}
         {!isEditingText ? (
-          <blockquote className="font-serif text-lg sm:text-xl text-[#ffc1d6] italic font-light mb-6">
+          <blockquote className="font-serif text-lg sm:text-xl text-[#ffc1d6] italic font-light mb-6 max-w-xl mx-auto">
             “{activeFrame.quote}”
           </blockquote>
         ) : (
@@ -241,15 +337,16 @@ export const FilmReelSection: React.FC<FilmReelProps> = ({ onImageClick }) => {
           />
         )}
 
-        {/* DIRECT ACTION BUTTONS: UPLOAD PHOTO/VIDEO & EDIT TEXT */}
+        {/* DIRECT ACTION BUTTONS */}
         <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
           {/* Direct Upload Button for this Frame */}
           <button
             onClick={handleUploadClick}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-[#ff2a73] to-[#9b2ce6] text-white text-xs sm:text-sm font-semibold shadow-lg hover:scale-105 active:scale-95 transition-all"
+            disabled={isUploading}
+            className="flex items-center gap-2 px-6 py-3 rounded-full bg-gradient-to-r from-[#ff2a73] to-[#9b2ce6] text-white text-xs sm:text-sm font-semibold shadow-[0_0_20px_rgba(255,42,115,0.5)] hover:scale-105 active:scale-95 transition-all"
           >
-            <Upload size={14} />
-            <span>Upload Photo/Video for Frame #{activeFrame.frameNumber}</span>
+            <Upload size={16} />
+            <span>{isUploading ? 'Uploading Video/Photo...' : `Upload Video/Photo for Frame #${activeFrame.frameNumber}`}</span>
           </button>
 
           {/* Edit / Save Text Button */}
@@ -269,24 +366,31 @@ export const FilmReelSection: React.FC<FilmReelProps> = ({ onImageClick }) => {
               </>
             )}
           </button>
-
-          {/* Expand Fullscreen */}
-          <button
-            onClick={() =>
-              onImageClick &&
-              onImageClick(
-                activeFrame.video || activeFrame.image,
-                activeFrame.title,
-                undefined,
-                undefined,
-                !!activeFrame.video
-              )
-            }
-            className="px-4 py-2.5 rounded-full bg-white/5 hover:bg-white/10 text-[#ff8fb5] text-xs font-serif uppercase tracking-wider transition-all"
-          >
-            View Fullscreen
-          </button>
         </div>
+
+        {/* Drag and Drop Prompt */}
+        <div
+          onClick={handleUploadClick}
+          className="mt-6 pt-4 border-t border-white/10 flex items-center justify-center gap-2 text-xs text-[#ffc1d6]/70 cursor-pointer hover:text-white transition-colors"
+        >
+          <FileVideo size={15} className="text-[#ff8fb5]" />
+          <span>You can also drag & drop any MP4, MOV, or Video file directly here</span>
+        </div>
+
+        {/* Upload Status Notification */}
+        <AnimatePresence>
+          {uploadStatus && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="mt-4 inline-flex items-center gap-2 text-xs font-serif text-emerald-300 bg-emerald-950/70 border border-emerald-500/40 px-4 py-2 rounded-full shadow-lg"
+            >
+              <CheckCircle2 size={15} />
+              <span>{uploadStatus}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
     </section>
   );
